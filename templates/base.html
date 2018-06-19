@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {% block head %}
+  <title>Stay Bought - {% block title %}{% endblock %}</title>
+  {% endblock %}
+</head>
+<body>
+  <div id="header">
+    {% block header %}
+    Test header
+    {% endblock %}
+  </div>
+  <div id="content">{% block content %}{% endblock %}</div>
+  <div id="footer">
+    {% block footer %}
+    Test footer
+    {% endblock %}
+  </div>
+</body>
+</html>

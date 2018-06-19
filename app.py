@@ -1,11 +1,11 @@
-from flask import Flask
+from flask import Flask, render_template
 import requests
 import os
 app = Flask(__name__)
 
 def fec_request(endpoint, query):
     payload = {
-        'api_key': os.environ['DATAGOV_API_KEY'],
+        'api_key': os.environ.get('DATAGOV_API_KEY'), # to add default?
         'q': query,
         'sort': 'name',
         'page': 1
@@ -16,7 +16,19 @@ def fec_request(endpoint, query):
     
 @app.route('/')
 def homepage():
-    return fec_request('candidates/search/', 'Cruz, Rafael').text
+    query = 'Cruz, Rafael'
+    query_response = fec_request('candidates/search/', query).text
+    return render_template('index.html',
+                           query=query,
+                           query_response=query_response)
+
+@app.route('/about')
+def about():
+    return render_template('about.html')
+
+@app.errorhandler(404)
+def page_not_found(error):
+    return render_template('page_not_found.html'), 404
 
 if __name__ == '__main__':
     app.run(debug=True)
