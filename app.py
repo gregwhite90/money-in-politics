@@ -5,10 +5,19 @@ app = Flask(__name__)
 
 @app.route('/')
 def homepage():
-    query = 'Cruz, Rafael'
-    query_response = tasks.fec_request('candidates/search/', query).text
+    cycle = '2016'
+    office = 'president'
+
+    fec_api_query = {
+        'sort': '-total_receipts',
+        'office': office,
+        'election_full': 'true',
+        'cycle': cycle,
+    }
+    
+    query_response = tasks.fec_request('elections/', fec_api_query).text
     return render_template('index.html',
-                           query=query,
+                           query=' '.join([cycle, office]),
                            query_response=query_response)
 
 @app.route('/about')
