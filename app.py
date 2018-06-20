@@ -15,10 +15,27 @@ def homepage():
         'cycle': cycle,
     }
     
-    query_response = tasks.fec_request('elections/', fec_api_query).text
+    query_response = tasks.fec_request('elections/', fec_api_query)
+
+    # to add error checking
+    
+    chart_params = {
+        'type': 'bar',
+        'labels': [],
+        'values': []
+    }
+
+    min_receipts = 5000000.0
+
+    for result in query_response.json()['results']:
+        if result['total_receipts'] < min_receipts: break
+        chart_params['labels'].append(result['candidate_name'])
+        chart_params['values'].append(result['total_receipts'])
+        
+    
     return render_template('index.html',
                            query=' '.join([cycle, office]),
-                           query_response=query_response)
+                           chart_params=chart_params)
 
 @app.route('/about')
 def about():
