@@ -26,7 +26,7 @@
          datasets: [{
              label: "2016 Presidential Election Total Receipts",
              data: {{ chart_params['values']|tojson|safe }},
-             fec_ids: {{ chart_params['candidate_fec_ids']|tojson|safe }}
+             links: {{ chart_params['candidate_links']|tojson|safe }}
          }]
      }
  });
@@ -35,10 +35,9 @@
      var point = chart.getElementAtEvent(evt)[0];
      
      if (point) {
-         var fec_id = chart.data.datasets[point._datasetIndex].fec_ids[point._index];
-         window.location.href = "{{ url_for('candidate_summary') }}#id#"
-             .replace('#id#', fec_id);
-         // /candidate-summaries/" + fec_id
+         var candidate_link = chart.data.datasets[point._datasetIndex].
+                                    links[point._index];
+         window.location.href = candidate_link;
      }
  }
 </script>

@@ -1,4 +1,4 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, url_for
 import tasks
 
 app = Flask(__name__)
@@ -23,7 +23,7 @@ def homepage():
         'type': 'bar',
         'labels': [],
         'values': [],
-        'candidate_fec_ids': []
+        'candidate_links': []
     }
 
     min_receipts = 5000000.0
@@ -32,48 +32,41 @@ def homepage():
         if result['total_receipts'] < min_receipts: break
         chart_params['labels'].append(result['candidate_name'])
         chart_params['values'].append(result['total_receipts'])
-        chart_params['candidate_fec_ids'].append(result['candidate_id'])
+        chart_params['candidate_links'].append(
+            url_for('candidate_summary',
+                    candidate_fec_id=result['candidate_id']))
     
     return render_template('index.html',
                            query=' '.join([cycle, office]),
                            chart_params=chart_params)
 
-@app.route('/candidate_summary/',
-           defaults={'candidate_fec_id': 'candidate_index'})
 @app.route('/candidate_summary/<candidate_fec_id>')
 def candidate_summary(candidate_fec_id):
     cycle = '2016'
         
-    if candidate_fec_id == 'candidate_index':
-        # needs to be updated to list out
-        return render_template('candidate.html',
-                               query=cycle,
-                               query_response=candidate_fec_id)
-        
-    else:
-        fec_api_query = {
-            'full_election': 'true',
-            'cycle': cycle
-        }
-
-        query_response = tasks.fec_request('candidate/' +
-                                           candidate_fec_id +
-                                           '/totals/',
-                                           fec_api_query)
-
-        # to add error checking
-        """
-        chart_params = {
-        'type': 'bar',
-        'labels': [],
-        'values': []
-        }
-        """
-
-        return render_template('candidate.html',
-                               query=cycle,
-                               query_response=query_response.text)
-
+    fec_api_query = {
+        'full_election': 'true',
+        'cycle': cycle
+    }
+    
+    query_response = tasks.fec_request('candidate/' +
+                                       candidate_fec_id +
+                                       '/totals/',
+                                       fec_api_query)
+    
+    # to add error checking
+    """
+    chart_params = {
+    'type': 'bar',
+    'labels': [],
+    'values': []
+    }
+    """
+    
+    return render_template('candidate.html',
+                           query=cycle,
+                           query_response=query_response.text)
+    
 @app.route('/about')
 def about():
     return render_template('about.html')
