@@ -54,18 +54,50 @@ def candidate_summary(candidate_fec_id):
                                        '/totals/',
                                        fec_api_query)
     
-    # to add error checking
-    """
+    # to add error checking, incl length of results being 1
+
+    result = query_response.json()['results'][0]
+
     chart_params = {
-    'type': 'bar',
-    'labels': [],
-    'values': []
+        'type': 'bar',
+        'labels': [],
+        'data': {
+            'labels': [result['candidate_id']],
+            'datasets': []
+        },
+        'options': {
+            'scales': {
+                'xAxes': [{
+                    'stacked': True
+                }],
+                'yAxes': [{
+                    'stacked': True
+                }]
+            }
+        },
+        'components-linked': False
     }
-    """
+
+    stacked_bars = ['contributions',
+                    'loans_received',
+                    'total_offsets_to_operating_expenditures',
+                    'transfers_from_affiliated_committee',
+                    'other_receipts']
+
+    for comp in stacked_bars:
+        dataset = {
+            'label': comp,
+            'data': [result[comp]]
+        }
+        """
+        if chart_params['components-linked']:
+            dataset['link']
+        """
+        chart_params['data']['datasets'].append(dataset)
     
-    return render_template('candidate.html',
-                           query=cycle,
-                           query_response=query_response.text)
+    return render_template('single-chart.html',
+                           query=cycle + result['candidate_id'], # to update
+                           chart_params=chart_params)
     
 @app.route('/about')
 def about():
