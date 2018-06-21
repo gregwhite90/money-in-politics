@@ -3,6 +3,28 @@ import tasks
 
 app = Flask(__name__)
 
+solarized_base_colors = [
+    '#002b36', # base03 
+    '#073642', # base02 
+    '#586e75', # base01 
+    '#657b83', # base00 
+    '#839496', # base0  
+    '#93a1a1', # base1  
+    '#eee8d5', # base2  
+    '#fdf6e3' # base3     
+]
+
+solarized_accent_colors = [
+    '#b58900', # yellow
+    '#cb4b16', # orange
+    '#dc322f', # red
+    '#d33682', # magenta
+    '#6c71c4', # violet
+    '#268bd2', # blue
+    '#2aa198', # cyan
+    '#859900'  # green
+]
+
 @app.route('/')
 def homepage():
     cycle = '2016'
@@ -18,25 +40,37 @@ def homepage():
     query_response = tasks.fec_request('elections/', fec_api_query)
 
     # to add error checking
+
+    stacked_bars = ['total_receipts']
     
     chart_params = {
         'type': 'bar',
-        'labels': [],
-        'values': [],
-        'candidate_links': []
+        'data': {
+            'labels': [],
+            'links': [],
+            'datasets': [{
+                'label': stacked_bar,
+                'data': [],
+                'backgroundColor': solarized_base_colors[idx]
+            } for idx, stacked_bar in enumerate(stacked_bars)]
+        },
+        'components-linked': True
     }
 
     min_receipts = 5000000.0
+    max_candidates = 5
 
-    for result in query_response.json()['results']:
-        if result['total_receipts'] < min_receipts: break
-        chart_params['labels'].append(result['candidate_name'])
-        chart_params['values'].append(result['total_receipts'])
-        chart_params['candidate_links'].append(
+    for idx, result in enumerate(query_response.json()['results']):
+        if result[stacked_bars[0]] < min_receipts or idx >= max_candidates:
+            break
+        chart_params['data']['labels'].append(result['candidate_name'])
+        chart_params['data']['links'].append(
             url_for('candidate_summary',
                     candidate_fec_id=result['candidate_id']))
+        for bar_idx, bar in enumerate(stacked_bars):
+            chart_params['data']['datasets'][bar_idx]['data'].append(result[bar])
     
-    return render_template('index.html',
+    return render_template('single-chart.html',
                            query=' '.join([cycle, office]),
                            chart_params=chart_params)
 
@@ -60,7 +94,6 @@ def candidate_summary(candidate_fec_id):
 
     chart_params = {
         'type': 'bar',
-        'labels': [],
         'data': {
             'labels': [result['candidate_id']],
             'datasets': []
@@ -84,10 +117,11 @@ def candidate_summary(candidate_fec_id):
                     'transfers_from_affiliated_committee',
                     'other_receipts']
 
-    for comp in stacked_bars:
+    for idx, comp in enumerate(stacked_bars):
         dataset = {
             'label': comp,
-            'data': [result[comp]]
+            'data': [result[comp]],
+            'backgroundColor': solarized_base_colors[idx]
         }
         """
         if chart_params['components-linked']:
