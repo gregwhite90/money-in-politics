@@ -1,5 +1,6 @@
-from flask import Flask, render_template, url_for
+from flask import Flask, render_template, url_for, abort
 import tasks
+import requests
 
 app = Flask(__name__)
 
@@ -54,6 +55,9 @@ def homepage():
                 'backgroundColor': solarized_base_colors[idx]
             } for idx, stacked_bar in enumerate(stacked_bars)]
         },
+        'options': {
+            'animation': False
+        },
         'components-linked': True
     }
 
@@ -87,6 +91,13 @@ def candidate_summary(candidate_fec_id):
                                        candidate_fec_id +
                                        '/totals/',
                                        fec_api_query)
+
+    if (
+            query_response.status_code != requests.codes.ok or
+            'results' not in query_response.json() or
+            len(query_response.json()['results']) != 1
+    ):
+        return abort(404)
     
     # to add error checking, incl length of results being 1
 
@@ -99,6 +110,7 @@ def candidate_summary(candidate_fec_id):
             'datasets': []
         },
         'options': {
+            'animation': False,
             'scales': {
                 'xAxes': [{
                     'stacked': True
