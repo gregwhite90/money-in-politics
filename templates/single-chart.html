@@ -4,9 +4,10 @@
 
 {% block head %}
 {{ super() }}
-<script src=https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.2/Chart.js></script>
+<script src="https://d3js.org/d3.v5.min.js"></script>
+<script src="https://d3js.org/d3-array.v2.min.js"></script>
 <style type="text/css">
- canvas {
+ #chart {
       width: 100%;
       height: auto;
  }
@@ -15,23 +16,825 @@
 
 {% block content %}
 <h1>Chart for query: {{ query }}</h1>
-<canvas id="chart" width="400" height="100"></canvas>
+<div id="chart" style="margin-bottom: 50px;"></div>
 <script>
+
+
  window.onload = function () {
-     var cv = document.getElementById("chart")
-     var ctx = cv.getContext("2d");
-     var chart = new Chart(ctx, {{ chart_params|tojson|safe }});
- 
-     if ({{ chart_params['components-linked']|tojson|safe }}) {
-         cv.onclick = function(evt) {
-             var point = chart.getElementAtEvent(evt)[0];
-     
-             if (point) {
-                 var candidate_link = chart.data.links[point._index];
-                 window.location.href = candidate_link;
-             }
+     // Adapted from: https://observablehq.com/@d3/diverging-stacked-bar-chart
+     /*
+     Object.defineProperty(Array.prototype, 'flat', {
+         value: function(depth = 1) {
+             return this.reduce(function (flat, toFlatten) {
+                 return flat.concat((Array.isArray(toFlatten) && (depth>1)) ? toFlatten.flat(depth-1) : toFlatten);
+             }, []);
          }
+     });
+     */
+
+
+     data = function () {
+         const categories = {
+             "pants-fire": "Pants on fire!",
+             "false": "False",
+             "mostly-false": "Mostly false",
+             "barely-true": "Mostly false", // recategorized
+             "half-true": "Half true",
+             "mostly-true": "Mostly true",
+             "true": "True"
+         }
+
+         const data = [
+             {name: "Donald Trump", category: "Pants on fire!", value: 0.15503875968992248},
+             {name: "Donald Trump", category: "Half true", value: 0.11627906976744186},
+             {name: "Donald Trump", category: "Mostly false", value: 0.20930232558139536},
+             {name: "Donald Trump", category: "False", value: 0.4263565891472868},
+             {name: "Donald Trump", category: "Mostly true", value: 0.05426356589147287},
+             {name: "Donald Trump", category: "True", value: 0.03875968992248062},
+             {name: "Bernie Sanders", category: "Mostly true", value: 0.325},
+             {name: "Bernie Sanders", category: "Half true", value: 0.375},
+             {name: "Bernie Sanders", category: "Mostly false", value: 0.1},
+             {name: "Bernie Sanders", category: "True", value: 0.125},
+             {name: "Bernie Sanders", category: "False", value: 0.075},
+             {name: "Joe Biden", category: "Mostly true", value: 0.25},
+             {name: "Joe Biden", category: "True", value: 0.1111111111111111},
+             {name: "Joe Biden", category: "Pants on fire!", value: 0.027777777777777776},
+             {name: "Joe Biden", category: "Mostly false", value: 0.3333333333333333},
+             {name: "Joe Biden", category: "False", value: 0.1388888888888889},
+             {name: "Joe Biden", category: "Half true", value: 0.1388888888888889},
+             {name: "Elizabeth Warren", category: "False", value: 0.07407407407407407},
+             {name: "Elizabeth Warren", category: "Mostly false", value: 0.14814814814814814},
+             {name: "Elizabeth Warren", category: "Mostly true", value: 0.25925925925925924},
+             {name: "Elizabeth Warren", category: "True", value: 0.25925925925925924},
+             {name: "Elizabeth Warren", category: "Half true", value: 0.25925925925925924},
+             {name: "Kamala Harris", category: "Mostly false", value: 0.25},
+             {name: "Kamala Harris", category: "False", value: 0.3125},
+             {name: "Kamala Harris", category: "Mostly true", value: 0.3125},
+             {name: "Kamala Harris", category: "Half true", value: 0.125},
+             {name: "Pete Buttigieg", category: "Mostly false", value: 0.3333333333333333},
+             {name: "Pete Buttigieg", category: "Half true", value: 0.26666666666666666},
+             {name: "Pete Buttigieg", category: "True", value: 0.2},
+             {name: "Pete Buttigieg", category: "False", value: 0.06666666666666667},
+             {name: "Pete Buttigieg", category: "Mostly true", value: 0.13333333333333333},
+             {name: "Amy Klobuchar", category: "Mostly false", value: 0.07692307692307693},
+             {name: "Amy Klobuchar", category: "True", value: 0.3076923076923077},
+             {name: "Amy Klobuchar", category: "Half true", value: 0.23076923076923078},
+             {name: "Amy Klobuchar", category: "Mostly true", value: 0.3076923076923077},
+             {name: "Amy Klobuchar", category: "False", value: 0.07692307692307693},
+             {name: "Beto O'Rourke", category: "False", value: 0.07692307692307693},
+             {name: "Beto O'Rourke", category: "True", value: 0.23076923076923078},
+             {name: "Beto O'Rourke", category: "Mostly false", value: 0.23076923076923078},
+             {name: "Beto O'Rourke", category: "Mostly true", value: 0.3076923076923077},
+             {name: "Beto O'Rourke", category: "Half true", value: 0.15384615384615385},
+             {name: "Michael Bloomberg", category: "Half true", value: 0.25},
+             {name: "Michael Bloomberg", category: "True", value: 0.25},
+             {name: "Michael Bloomberg", category: "Mostly true", value: 0.3333333333333333},
+             {name: "Michael Bloomberg", category: "Mostly false", value: 0.08333333333333333},
+             {name: "Michael Bloomberg", category: "False", value: 0.08333333333333333}
+         ];
+
+         return Object.assign(data, {
+             format: ".0%",
+             negative: "← More falsehoods",
+             positive: "More truths →",
+             negatives: ["Pants on fire!", "False", "Mostly false"],
+             positives: ["Half true", "Mostly true", "True"]
+         });
      }
+
+     data = data();
+
+     signs = new Map([].concat(
+         data.negatives.map(d => [d, -1]),
+         data.positives.map(d => [d, +1])
+     ));
+
+     bias = d3.rollups(data, v => d3.sum(v, d => d.value * Math.min(0, signs.get(d.category))), d => d.name)
+              .sort(([, a], [, b]) => d3.ascending(a, b));
+
+     // TODO: figure out the sizing (ideally dynamically?)
+     margin = {top: 40, right: 30, bottom: 0, left: 80};
+     height = bias.length * 33 + margin.top + margin.bottom;
+     width = 500;
+
+     /*
+     series = d3.stack()
+                .keys([].concat(data.negatives.slice().reverse(), data.positives))
+                .value(([, value], category) => signs.get(category) * (value.get(category) || 0))
+                .offset(d3.stackOffsetDiverging);
+      */
+
+
+     series =
+         [
+             [
+                 Object.assign([-0.20930232558139536,0],
+                               {
+                                   key: "Mostly false",
+                                   data: ["Donald Trump", new Map([["Pants on fire!", 0.15503875968992248],
+                                                                   ["Half true", 0.11627906976744186],
+                                                                   ["Mostly false", 0.20930232558139536],
+                                                                   ["False", 0.4263565891472868],
+                                                                   ["Mostly true", 0.05426356589147287],
+                                                                   ["True", 0.03875968992248062]
+                                   ])]}
+                 ),
+                 Object.assign([-0.1,0],
+                               {
+                                   key: "Mostly false",
+                                   data: ["Bernie Sanders", new Map([["Half true", 0.375],
+                                                                     ["Mostly false", 0.1],
+                                                                     ["False", 0.075],
+                                                                     ["Mostly true", 0.325],
+                                                                     ["True", 0.125]
+                                   ])]}
+                 ),
+                 Object.assign([-0.3333333333333333,0],
+                               {
+                                   key: "Mostly false",
+                                   data: ["Joe Biden", new Map([["Half true", 0.1388888888888889],
+                                                                ["Mostly false", 0.3333333333333333],
+                                                                ["False", 0.1388888888888889],
+                                                                ["Mostly true", 0.25],
+                                                                ["True", 0.1111111111111111],
+                                                                ["Pants on fire!", 0.027777777777777776]
+                                   ])]}
+                 ),
+                 Object.assign([-0.14814814814814814,0],
+                               {
+                                   key: "Mostly false",
+                                   data: ["Elizabeth Warren", new Map([["Half true", 0.25925925925925924],
+                                                                       ["Mostly false", 0.14814814814814814],
+                                                                       ["False", 0.07407407407407407],
+                                                                       ["Mostly true", 0.25925925925925924],
+                                                                       ["True", 0.25925925925925924]
+                                   ])]}
+                 ),
+                 Object.assign([-0.25,0],
+                               {
+                                   key: "Mostly false",
+                                   data: ["Kamala Harris", new Map([["Half true", 0.125],
+                                                                    ["Mostly false", 0.25],
+                                                                    ["False", 0.3125],
+                                                                    ["Mostly true", 0.3125]
+                                   ])]}
+                 ),
+                 Object.assign([-0.3333333333333333,0],
+                               {
+                                   key: "Mostly false",
+                                   data: ["Pete Buttigieg", new Map([["Half true", 0.26666666666666666],
+                                                                     ["Mostly false", 0.3333333333333333],
+                                                                     ["False", 0.06666666666666667],
+                                                                     ["Mostly true", 0.13333333333333333],
+                                                                     ["True", 0.2]
+                                   ])]}
+                 ),
+                 Object.assign([-0.07692307692307693,0],
+                               {
+                                   key: "Mostly false",
+                                   data: ["Amy Klobuchar", new Map([["Half true", 0.23076923076923078],
+                                                                    ["Mostly false", 0.07692307692307693],
+                                                                    ["False", 0.07692307692307693],
+                                                                    ["Mostly true", 0.3076923076923077],
+                                                                    ["True", 0.3076923076923077]
+                                   ])]}
+                 ),
+                 Object.assign([-0.23076923076923078,0],
+                               {
+                                   key: "Mostly false",
+                                   data: ["Beto O'Rourke", new Map([["Half true", 0.15384615384615385],
+                                                                    ["Mostly false", 0.3076923076923077],
+                                                                    ["False", 0.07692307692307693],
+                                                                    ["Mostly true", 0.3076923076923077],
+                                                                    ["True", 0.23076923076923078]
+                                   ])]}
+                 ),
+                 Object.assign([-0.08333333333333333,0],
+                               {
+                                   key: "Mostly false",
+                                   data: ["Michael Bloomberg", new Map([["Half true", 0.25],
+                                                                        ["Mostly false", 0.08333333333333333],
+                                                                        ["False", 0.08333333333333333],
+                                                                        ["Mostly true", 0.3333333333333333],
+                                                                        ["True", 0.25]
+                                   ])]}
+                 ),
+                 key: "Mostly false",
+                 index: 0
+             ],
+             [
+                 [-0.6356589147286822,-0.20930232558139536,
+                  key: "False",
+                  data: ["Donald Trump", new Map([["Pants on fire!", 0.15503875968992248],
+                                                  ["Half true", 0.11627906976744186],
+                                                  ["Mostly false", 0.20930232558139536],
+                                                  ["False", 0.4263565891472868],
+                                                  ["Mostly true", 0.05426356589147287],
+                                                  ["True", 0.03875968992248062]
+                  ])]],
+                 [-0.175,-0.1,
+                  key: "False",
+                  data: ["Bernie Sanders", new Map([["Half true", 0.375],
+                                                    ["Mostly false", 0.1],
+                                                    ["False", 0.075],
+                                                    ["Mostly true", 0.325],
+                                                    ["True", 0.125]
+                  ])]],
+                 [-0.4722222222222222,-0.3333333333333333,
+                  key: "False",
+                  data: ["Joe Biden", new Map([["Half true", 0.1388888888888889],
+                                               ["Mostly false", 0.3333333333333333],
+                                               ["False", 0.1388888888888889],
+                                               ["Mostly true", 0.25],
+                                               ["True", 0.1111111111111111],
+                                               ["Pants on fire!", 0.027777777777777776]
+                  ])]],
+                 [-0.2222222222222222,-0.14814814814814814,
+                  key: "False",
+                  data: ["Elizabeth Warren", new Map([["Half true", 0.25925925925925924],
+                                                      ["Mostly false", 0.14814814814814814],
+                                                      ["False", 0.07407407407407407],
+                                                      ["Mostly true", 0.25925925925925924],
+                                                      ["True", 0.25925925925925924]
+                  ])]],
+                 [-0.5625,-0.25,
+                  key: "False",
+                  data: ["Kamala Harris", new Map([["Half true", 0.125],
+                                                   ["Mostly false", 0.25],
+                                                   ["False", 0.3125],
+                                                   ["Mostly true", 0.3125]
+                  ])]],
+                 [-0.39999999999999997,-0.3333333333333333,
+                  key: "False",
+                  data: ["Pete Buttigieg", new Map([["Half true", 0.26666666666666666],
+                                                    ["Mostly false", 0.3333333333333333],
+                                                    ["False", 0.06666666666666667],
+                                                    ["Mostly true", 0.13333333333333333],
+                                                    ["True", 0.2]
+                  ])]],
+                 [-0.15384615384615385,-0.07692307692307693,
+                  key: "False",
+                  data: ["Amy Klobuchar", new Map([["Half true", 0.23076923076923078],
+                                                   ["Mostly false", 0.07692307692307693],
+                                                   ["False", 0.07692307692307693],
+                                                   ["Mostly true", 0.3076923076923077],
+                                                   ["True", 0.3076923076923077]
+                  ])]],
+                 [-0.3076923076923077,-0.23076923076923078,
+                  key: "False",
+                  data: ["Beto O'Rourke", new Map([["Half true", 0.15384615384615385],
+                                                   ["Mostly false", 0.3076923076923077],
+                                                   ["False", 0.07692307692307693],
+                                                   ["Mostly true", 0.3076923076923077],
+                                                   ["True", 0.23076923076923078]
+                  ])]],
+                 [-0.16666666666666666,-0.08333333333333333,
+                  key: "False",
+                  data: ["Michael Bloomberg", new Map([["Half true", 0.25],
+                                                       ["Mostly false", 0.08333333333333333],
+                                                       ["False", 0.08333333333333333],
+                                                       ["Mostly true", 0.3333333333333333],
+                                                       ["True", 0.25]
+                  ])]],
+                 key: "False",
+                 index: 1
+             ],
+             [
+                 [-0.7906976744186047,-0.6356589147286822,
+                  key: "Pants on fire!",
+                  data: ["Donald Trump", new Map([["Pants on fire!", 0.15503875968992248],
+                                                  ["Half true", 0.11627906976744186],
+                                                  ["Mostly false", 0.20930232558139536],
+                                                  ["False", 0.4263565891472868],
+                                                  ["Mostly true", 0.05426356589147287],
+                                                  ["True", 0.03875968992248062]
+                  ])]],
+                 [0,0,
+                  key: "Pants on fire!",
+                  data: ["Bernie Sanders", new Map([["Half true", 0.375],
+                                                    ["Mostly false", 0.1],
+                                                    ["False", 0.075],
+                                                    ["Mostly true", 0.325],
+                                                    ["True", 0.125]
+                  ])]],
+                 [-0.5,-0.4722222222222222,
+                  key: "Pants on fire!",
+                  data: ["Joe Biden", new Map([["Half true", 0.1388888888888889],
+                                               ["Mostly false", 0.3333333333333333],
+                                               ["False", 0.1388888888888889],
+                                               ["Mostly true", 0.25],
+                                               ["True", 0.1111111111111111],
+                                               ["Pants on fire!", 0.027777777777777776]
+                  ])]],
+                 [0,0,
+                  key: "Pants on fire!",
+                  data: ["Elizabeth Warren", new Map([["Half true", 0.25925925925925924],
+                                                      ["Mostly false", 0.14814814814814814],
+                                                      ["False", 0.07407407407407407],
+                                                      ["Mostly true", 0.25925925925925924],
+                                                      ["True", 0.25925925925925924]
+                  ])]],
+                 [0,0,
+                  key: "Pants on fire!",
+                  data: ["Kamala Harris", new Map([["Half true", 0.125],
+                                                   ["Mostly false", 0.25],
+                                                   ["False", 0.3125],
+                                                   ["Mostly true", 0.3125]
+                  ])]],
+                 [0,0,
+                  key: "Pants on fire!",
+                  data: ["Pete Buttigieg", new Map([["Half true", 0.26666666666666666],
+                                                    ["Mostly false", 0.3333333333333333],
+                                                    ["False", 0.06666666666666667],
+                                                    ["Mostly true", 0.13333333333333333],
+                                                    ["True", 0.2]
+                  ])]],
+                 [0,0,
+                  key: "Pants on fire!",
+                  data: ["Amy Klobuchar", new Map([["Half true", 0.23076923076923078],
+                                                   ["Mostly false", 0.07692307692307693],
+                                                   ["False", 0.07692307692307693],
+                                                   ["Mostly true", 0.3076923076923077],
+                                                   ["True", 0.3076923076923077]
+                  ])]],
+                 [0,0,
+                  key: "Pants on fire!",
+                  data: ["Beto O'Rourke", new Map([["Half true", 0.15384615384615385],
+                                                   ["Mostly false", 0.3076923076923077],
+                                                   ["False", 0.07692307692307693],
+                                                   ["Mostly true", 0.3076923076923077],
+                                                   ["True", 0.23076923076923078]
+                  ])]],
+                 [0,0,
+                  key: "Pants on fire!",
+                  data: ["Michael Bloomberg", new Map([["Half true", 0.25],
+                                                       ["Mostly false", 0.08333333333333333],
+                                                       ["False", 0.08333333333333333],
+                                                       ["Mostly true", 0.3333333333333333],
+                                                       ["True", 0.25]
+                  ])]],
+                 key: "Pants on fire!",
+                 index: 2
+             ],
+             [
+                 [0,0.11627906976744186,
+                  key: "Half true",
+                  data: ["Donald Trump", new Map([["Pants on fire!", 0.15503875968992248],
+                                                  ["Half true", 0.11627906976744186],
+                                                  ["Mostly false", 0.20930232558139536],
+                                                  ["False", 0.4263565891472868],
+                                                  ["Mostly true", 0.05426356589147287],
+                                                  ["True", 0.03875968992248062]
+                  ])]],
+                 [0,0.375,
+                  key: "Half true",
+                  data: ["Bernie Sanders", new Map([["Half true", 0.375],
+                                                    ["Mostly false", 0.1],
+                                                    ["False", 0.075],
+                                                    ["Mostly true", 0.325],
+                                                    ["True", 0.125]
+                  ])]],
+                 [0,0.1388888888888889,
+                  key: "Half true",
+                  data: ["Joe Biden", new Map([["Half true", 0.1388888888888889],
+                                               ["Mostly false", 0.3333333333333333],
+                                               ["False", 0.1388888888888889],
+                                               ["Mostly true", 0.25],
+                                               ["True", 0.1111111111111111],
+                                               ["Pants on fire!", 0.027777777777777776]
+                  ])]],
+                 [0,0.25925925925925924,
+                  key: "Half true",
+                  data: ["Elizabeth Warren", new Map([["Half true", 0.25925925925925924],
+                                                      ["Mostly false", 0.14814814814814814],
+                                                      ["False", 0.07407407407407407],
+                                                      ["Mostly true", 0.25925925925925924],
+                                                      ["True", 0.25925925925925924]
+                  ])]],
+                 [0,0.125,
+                  key: "Half true",
+                  data: ["Kamala Harris", new Map([["Half true", 0.125],
+                                                   ["Mostly false", 0.25],
+                                                   ["False", 0.3125],
+                                                   ["Mostly true", 0.3125]
+                  ])]],
+                 [0,0.26666666666666666,
+                  key: "Half true",
+                  data: ["Pete Buttigieg", new Map([["Half true", 0.26666666666666666],
+                                                    ["Mostly false", 0.3333333333333333],
+                                                    ["False", 0.06666666666666667],
+                                                    ["Mostly true", 0.13333333333333333],
+                                                    ["True", 0.2]
+                  ])]],
+                 [0,0.23076923076923078,
+                  key: "Half true",
+                  data: ["Amy Klobuchar", new Map([["Half true", 0.23076923076923078],
+                                                   ["Mostly false", 0.07692307692307693],
+                                                   ["False", 0.07692307692307693],
+                                                   ["Mostly true", 0.3076923076923077],
+                                                   ["True", 0.3076923076923077]
+                  ])]],
+                 [0,0.15384615384615385,
+                  key: "Half true",
+                  data: ["Beto O'Rourke", new Map([["Half true", 0.15384615384615385],
+                                                   ["Mostly false", 0.3076923076923077],
+                                                   ["False", 0.07692307692307693],
+                                                   ["Mostly true", 0.3076923076923077],
+                                                   ["True", 0.23076923076923078]
+                  ])]],
+                 [0,0.25,
+                  key: "Half true",
+                  data: ["Michael Bloomberg", new Map([["Half true", 0.25],
+                                                       ["Mostly false", 0.08333333333333333],
+                                                       ["False", 0.08333333333333333],
+                                                       ["Mostly true", 0.3333333333333333],
+                                                       ["True", 0.25]
+                  ])]],
+                 key: "Half true",
+                 index: 3
+             ],
+             [
+                 [0.11627906976744186,0.17054263565891473,
+                  key: "Mostly true",
+                  data: ["Donald Trump", new Map([["Pants on fire!", 0.15503875968992248],
+                                                  ["Half true", 0.11627906976744186],
+                                                  ["Mostly false", 0.20930232558139536],
+                                                  ["False", 0.4263565891472868],
+                                                  ["Mostly true", 0.05426356589147287],
+                                                  ["True", 0.03875968992248062]
+                  ])]],
+                 [0.375,0.7,
+                  key: "Mostly true",
+                  data: ["Bernie Sanders", new Map([["Half true", 0.375],
+                                                    ["Mostly false", 0.1],
+                                                    ["False", 0.075],
+                                                    ["Mostly true", 0.325],
+                                                    ["True", 0.125]
+                  ])]],
+                 [0.1388888888888889,0.3888888888888889,
+                  key: "Mostly true",
+                  data: ["Joe Biden", new Map([["Half true", 0.1388888888888889],
+                                               ["Mostly false", 0.3333333333333333],
+                                               ["False", 0.1388888888888889],
+                                               ["Mostly true", 0.25],
+                                               ["True", 0.1111111111111111],
+                                               ["Pants on fire!", 0.027777777777777776]
+                  ])]],
+                 [0.25925925925925924,0.5185185185185185,
+                  key: "Mostly true",
+                  data: ["Elizabeth Warren", new Map([["Half true", 0.25925925925925924],
+                                                      ["Mostly false", 0.14814814814814814],
+                                                      ["False", 0.07407407407407407],
+                                                      ["Mostly true", 0.25925925925925924],
+                                                      ["True", 0.25925925925925924]
+                  ])]],
+                 [0.125,0.4375,
+                  key: "Mostly true",
+                  data: ["Kamala Harris", new Map([["Half true", 0.125],
+                                                   ["Mostly false", 0.25],
+                                                   ["False", 0.3125],
+                                                   ["Mostly true", 0.3125]
+                  ])]],
+                 [0.26666666666666666,0.4,
+                  key: "Mostly true",
+                  data: ["Pete Buttigieg", new Map([["Half true", 0.26666666666666666],
+                                                    ["Mostly false", 0.3333333333333333],
+                                                    ["False", 0.06666666666666667],
+                                                    ["Mostly true", 0.13333333333333333],
+                                                    ["True", 0.2]
+                  ])]],
+                 [0.23076923076923078,0.5384615384615385,
+                  key: "Mostly true",
+                  data: ["Amy Klobuchar", new Map([["Half true", 0.23076923076923078],
+                                                   ["Mostly false", 0.07692307692307693],
+                                                   ["False", 0.07692307692307693],
+                                                   ["Mostly true", 0.3076923076923077],
+                                                   ["True", 0.3076923076923077]
+                  ])]],
+                 [0.15384615384615385,0.46153846153846156,
+                  key: "Mostly true",
+                  data: ["Beto O'Rourke", new Map([["Half true", 0.15384615384615385],
+                                                   ["Mostly false", 0.3076923076923077],
+                                                   ["False", 0.07692307692307693],
+                                                   ["Mostly true", 0.3076923076923077],
+                                                   ["True", 0.23076923076923078]
+                  ])]],
+                 [0.25,0.5833333333333333,
+                  key: "Mostly true",
+                  data: ["Michael Bloomberg", new Map([["Half true", 0.25],
+                                                       ["Mostly false", 0.08333333333333333],
+                                                       ["False", 0.08333333333333333],
+                                                       ["Mostly true", 0.3333333333333333],
+                                                       ["True", 0.25]
+                  ])]],
+                 key: "Mostly true",
+                 index: 4
+             ],
+             [
+                 [0.17054263565891473,0.20930232558139533,
+                  key: "True",
+                  data: ["Donald Trump", new Map([["Pants on fire!", 0.15503875968992248],
+                                                  ["Half true", 0.11627906976744186],
+                                                  ["Mostly false", 0.20930232558139536],
+                                                  ["False", 0.4263565891472868],
+                                                  ["Mostly true", 0.05426356589147287],
+                                                  ["True", 0.03875968992248062]
+                  ])]],
+                 [0.7,0.825,
+                  key: "True",
+                  data: ["Bernie Sanders", new Map([["Half true", 0.375],
+                                                    ["Mostly false", 0.1],
+                                                    ["False", 0.075],
+                                                    ["Mostly true", 0.325],
+                                                    ["True", 0.125]
+                  ])]],
+                 [0.3888888888888889,0.5,
+                  key: "True",
+                  data: ["Joe Biden", new Map([["Half true", 0.1388888888888889],
+                                               ["Mostly false", 0.3333333333333333],
+                                               ["False", 0.1388888888888889],
+                                               ["Mostly true", 0.25],
+                                               ["True", 0.1111111111111111],
+                                               ["Pants on fire!", 0.027777777777777776]
+                  ])]],
+                 [0.5185185185185185,0.7777777777777777,
+                  key: "True",
+                  data: ["Elizabeth Warren", new Map([["Half true", 0.25925925925925924],
+                                                      ["Mostly false", 0.14814814814814814],
+                                                      ["False", 0.07407407407407407],
+                                                      ["Mostly true", 0.25925925925925924],
+                                                      ["True", 0.25925925925925924]
+                  ])]],
+                 [0,0,
+                  key: "True",
+                  data: ["Kamala Harris", new Map([["Half true", 0.125],
+                                                   ["Mostly false", 0.25],
+                                                   ["False", 0.3125],
+                                                   ["Mostly true", 0.3125]
+                  ])]],
+                 [0.4,0.6000000000000001,
+                  key: "True",
+                  data: ["Pete Buttigieg", new Map([["Half true", 0.26666666666666666],
+                                                    ["Mostly false", 0.3333333333333333],
+                                                    ["False", 0.06666666666666667],
+                                                    ["Mostly true", 0.13333333333333333],
+                                                    ["True", 0.2]
+                  ])]],
+                 [0.5384615384615385,0.8461538461538463,
+                  key: "True",
+                  data: ["Amy Klobuchar", new Map([["Half true", 0.23076923076923078],
+                                                   ["Mostly false", 0.07692307692307693],
+                                                   ["False", 0.07692307692307693],
+                                                   ["Mostly true", 0.3076923076923077],
+                                                   ["True", 0.3076923076923077]
+                  ])]],
+                 [0.46153846153846156,0.6923076923076923,
+                  key: "True",
+                  data: ["Beto O'Rourke", new Map([["Half true", 0.15384615384615385],
+                                                   ["Mostly false", 0.3076923076923077],
+                                                   ["False", 0.07692307692307693],
+                                                   ["Mostly true", 0.3076923076923077],
+                                                   ["True", 0.23076923076923078]
+                  ])]],
+                 [0.5833333333333333,0.8333333333333333,
+                  key: "True",
+                  data: ["Michael Bloomberg", new Map([["Half true", 0.25],
+                                                       ["Mostly false", 0.08333333333333333],
+                                                       ["False", 0.08333333333333333],
+                                                       ["Mostly true", 0.3333333333333333],
+                                                       ["True", 0.25]
+                  ])]],
+                 key: "True",
+                 index: 5
+             ]
+         ];
+
+     (d3.rollups(data, data => d3.rollup(data, ([d]) => d.value, d => d.category), d => d.name));
+
+     x = d3.scaleLinear()
+           .domain(d3.extent(series.flat(2)))
+           .rangeRound([margin.left, width - margin.right]);
+
+     y = d3.scaleBand()
+           .domain(bias.map(([name]) => name))
+           .rangeRound([margin.top, height - margin.bottom])
+           .padding(2 / 33);
+
+     color = d3.scaleOrdinal()
+               .domain([].concat(data.negatives, data.positives))
+               .range(d3.schemeSpectral[data.negatives.length + data.positives.length]);
+
+
+     xAxis = g => g
+         .attr("transform", `translate(0,${margin.top})`)
+         .call(d3.axisTop(x)
+                 .ticks(width / 80)
+                 .tickFormat(formatValue)
+                 .tickSizeOuter(0))
+         .call(g => g.select(".domain").remove())
+         .call(g => g.append("text")
+                     .attr("x", x(0) + 20)
+                     .attr("y", -24)
+                     .attr("fill", "currentColor")
+                     .attr("text-anchor", "start")
+                     .text(data.positive))
+         .call(g => g.append("text")
+                     .attr("x", x(0) - 20)
+                     .attr("y", -24)
+                     .attr("fill", "currentColor")
+                     .attr("text-anchor", "end")
+                     .text(data.negative))
+
+     yAxis = g => g
+         .call(d3.axisLeft(y).tickSizeOuter(0))
+         .call(g => g.selectAll(".tick").data(bias).attr("transform", ([name, min]) => `translate(${x(min)},${y(name) + y.bandwidth() / 2})`))
+         .call(g => g.select(".domain").attr("transform", `translate(${x(0)},0)`))
+
+     formatValue = function() {
+         const format = d3.format(data.format || "");
+         return x => format(Math.abs(x));
+     }
+
+     chart = function() {
+         const svg = d3.create("svg")
+                       .attr("viewBox", [0, 0, width, height]);
+
+         svg.append("g")
+            .selectAll("g")
+            .data(series)
+            .join("g")
+            .attr("fill", d => color(d.key))
+            .selectAll("rect")
+            .data(d => d.map(v => Object.assign(v, {key: d.key})))
+            .join("rect")
+            .attr("x", d => x(d[0]))
+            .attr("y", ({data: [name]}) => y(name))
+            .attr("width", d => x(d[1]) - x(d[0]))
+            .attr("height", y.bandwidth())
+            .append("title")
+            .text(({key, data: [name, value]}) => `${name}
+${formatValue(value.get(key))} ${key}`);
+
+         svg.append("g")
+            .call(xAxis);
+
+         svg.append("g")
+            .call(yAxis);
+
+         return svg.node();
+     }
+
+     d3.select("#figure").appendChild(chart());
+
+     /*
+     var margin = {top: 50, right: 20, bottom: 10, left: 65},
+         width = 800 - margin.left - margin.right,
+         height = 500 - margin.top - margin.bottom;
+
+     var y = d3.scaleBand()
+               .rangeRound([0, height])
+               .padding(0.3);
+
+     var x = d3.scaleLinear()
+               .rangeRound([0, width]);
+
+     var color = d3.scaleOrdinal()
+                   .range(["#c7001e", "#f6a580", "#cccccc", "#92c6db", "#086fad"]);
+
+     // TODO: add the support -> and <- oppose markers
+     var xAxis = d3.axisTop(x);
+
+     var yAxis = d3.axisLeft(y);
+
+     var svg = d3.select("#figure").append("svg")
+                 .attr("width", width + margin.left + margin.right)
+                 .attr("height", height + margin.top + margin.bottom)
+                 .attr("id", "d3-plot")
+                 .append("g")
+                 .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+     // TODO: pull in domain and data from flask app
+     color.domain(["Strongly disagree", "Disagree", "Neither agree nor disagree", "Agree", "Strongly agree"]);
+
+     var data = [
+         {"Question": "Question 1", "1": 24, "2": 294, "3": 594, "4": 1927, "5": 376, "N": 3215},
+         {"Question": "Question 2", "1": 2, "2": 2, "3": 0, "4": 7, "5": 0, "N": 11},
+         {"Question": "Question 3", "1": 2, "2": 0, "3": 2, "4": 4, "5": 2, "N": 10},
+         {"Question": "Question 4", "1": 0, "2": 2, "3": 1, "4": 7, "5": 6, "N": 16},
+         {"Question": "Question 5", "1": 0, "2": 1, "3": 3, "4": 16, "5": 4, "N": 24},
+         {"Question": "Question 6", "1": 1, "2": 1, "3": 2, "4": 9, "5": 3, "N": 16},
+         {"Question": "Question 7", "1": 0, "2": 0, "3": 1, "4": 4, "5": 0, "N": 5},
+         {"Question": "Question 8", "1": 0, "2": 0, "3": 0, "4": 0, "5": 2, "N": 2},
+     ];
+
+     // TODO: just do this on the backend
+     data.forEach(function(d) {
+         // calc percentages
+         d["Strongly disagree"] = +d[1]*100/d.N;
+         d["Disagree"] = +d[2]*100/d.N;
+         d["Neither agree nor disagree"] = +d[3]*100/d.N;
+         d["Agree"] = +d[4]*100/d.N;
+         d["Strongly agree"] = +d[5]*100/d.N;
+         var x0 = -1*(d["Neither agree nor disagree"]/2+d["Disagree"]+d["Strongly disagree"]);
+         var idx = 0;
+         d.boxes = color.domain().map(function(name) { return {name: name, x0: x0, x1: x0 += +d[name], N: +d.N, n: +d[idx += 1]}; });
+     });
+
+     var min_val = d3.min(data, function(d) {
+         return d.boxes["0"].x0;
+     });
+
+     var max_val = d3.max(data, function(d) {
+         return d.boxes["4"].x1;
+     });
+
+     x.domain([min_val, max_val]).nice();
+     y.domain(data.map(function(d) { return d.Question; }));
+
+     svg.append("g")
+        .attr("class", "x axis")
+        .call(xAxis);
+
+     svg.append("g")
+        .attr("class", "y axis")
+        .call(yAxis)
+
+     var vakken = svg.selectAll(".question")
+                     .data(data)
+                     .enter().append("g")
+                     .attr("class", "bar")
+                     .attr("transform", function(d) { return "translate(0," + y(d.Question) + ")"; });
+
+     var bars = vakken.selectAll("rect")
+                      .data(function(d) { return d.boxes; })
+                      .enter().append("g").attr("class", "subbar");
+
+     bars.append("rect")
+         .attr("height", y.bandwidth())
+         .attr("x", function(d) { return x(d.x0); })
+         .attr("width", function(d) { return x(d.x1) - x(d.x0); })
+         .style("fill", function(d) { return color(d.name); });
+
+     bars.append("text")
+         .attr("x", function(d) { return x(d.x0); })
+         .attr("y", y.bandwidth()/2)
+         .attr("dy", "0.5em")
+         .attr("dx", "0.5em")
+         .style("font" ,"10px sans-serif")
+         .style("text-anchor", "begin")
+         .text(function(d) { return d.n !== 0 && (d.x1-d.x0)>3 ? d.n : "" });
+
+     vakken.insert("rect",":first-child")
+           .attr("height", y.bandwidth())
+           .attr("x", "1")
+           .attr("width", width)
+           .attr("fill-opacity", "0.5")
+           .style("fill", "#F5F5F5")
+           .attr("class", function(d,index) { return index%2==0 ? "even" : "uneven"; });
+
+     svg.append("g")
+        .attr("class", "y axis")
+        .append("line")
+        .attr("x1", x(0))
+        .attr("x2", x(0))
+        .attr("y2", height);
+
+     var startp = svg.append("g").attr("class", "legendbox").attr("id", "mylegendbox");
+     // this is not nice, we should calculate the bounding box and use that
+     var legend_tabs = [0, 120, 200, 375, 450];
+     var legend = startp.selectAll(".legend")
+                        .data(color.domain().slice())
+                        .enter().append("g")
+                        .attr("class", "legend")
+                        .attr("transform", function(d, i) { return "translate(" + legend_tabs[i] + ",-45)"; });
+
+     legend.append("rect")
+           .attr("x", 0)
+           .attr("width", 18)
+           .attr("height", 18)
+           .style("fill", color);
+
+     legend.append("text")
+           .attr("x", 22)
+           .attr("y", 9)
+           .attr("dy", ".35em")
+           .style("text-anchor", "begin")
+           .style("font" ,"10px sans-serif")
+           .text(function(d) { return d; });
+
+     d3.selectAll(".axis path")
+       .style("fill", "none")
+       .style("stroke", "#000")
+       .style("shape-rendering", "crispEdges")
+
+     d3.selectAll(".axis line")
+       .style("fill", "none")
+       .style("stroke", "#000")
+       .style("shape-rendering", "crispEdges")
+
+     var movesize = width/2 - startp.node().getBBox().width/2;
+     d3.selectAll(".legendbox").attr("transform", "translate(" + movesize  + ",0)");
+     */
  };
 </script>
 {% endblock %}
