@@ -1,0 +1,286 @@
+from collections import defaultdict
+from enum import Enum
+import os
+from operator import itemgetter
+import sys
+import requests
+from typing import Dict
+import us
+
+class Office(Enum):
+    PRES = 'president'
+    SEN = 'senate'
+    HOUSE = 'house'
+
+class Race:
+    def __init__(self, office: Office, cycle: int) -> None:
+        self.office = office
+        self.cycle = cycle
+
+    def query(self, election_full: bool = True) -> Dict[str, any]:
+        return {
+            'office': self.office.value,
+            'cycle': self.cycle, # TODO: handle election_full and non-election_full cycles
+        }
+
+class PresidentialRace(Race):
+    def __init__(self, cycle: int) -> None:
+        # confirm it's a valid year?
+        super().__init__(Office.PRES, cycle)
+
+    def query(self, election_full: bool = True) -> Dict[str, any]:
+        return super().query(election_full=election_full)
+
+class StateRace(Race):
+    def __init__(self, office: Office, cycle: int, state: us.states.State) -> None:
+        super().__init__(office, cycle)
+        self.state = state
+
+    def query(self, election_full: bool = True) -> Dict[str, any]:
+        return {
+            **super().query(election_full=election_full),
+            'state': self.state.abbr
+        }
+
+class SenateRace(StateRace):
+    def __init__(self, cycle: int, state: us.states.State) -> None:
+        super().__init__(Office.SEN, cycle, state)
+
+class HouseRace(StateRace):
+    def __init__(self, cycle: int, state: us.states.State, district: int) -> None:
+        super().__init__(Office.HOUSE, cycle, state)
+        self.district = district
+
+    def query(self, election_full: bool = True) -> Dict[str, any]:
+        return {
+            **super().query(election_full=election_full),
+            'district': self.district
+        }
+
+class RaceSummary():
+    def __init__(self, race: Race):
+        self.race = race
+        self.candidates = {}
+        
+        elections_options = {
+            'election_full': True,
+            'sort': '-total_disbursements'
+        }
+        for r in FECRequester('elections/', {**elections_options, **race.query()}):
+            for res in r:
+                self.candidates[res['candidate_id']] = CandidateRaceSummary(res)
+
+        schedule_e_by_candidate_options = {
+            'election_full': True,
+            'sort': '-total'
+        }
+        for r in FECRequester('schedules/schedule_e/by_candidate/',
+                              {**schedule_e_by_candidate_options, **race.query()}):
+            for res in r:
+                self.candidates[res['candidate_id']].add_schedule_e_result(res)
+
+
+        schedule_f_options = {
+            'sort': '-aggregate_general_election_expenditure',
+            'candidate_id': [i for i in self.candidates.keys() if self.candidates[i].total_disbursements > 0.0]
+        }
+        for r in FECRequester('schedules/schedule_f/',
+                              {**schedule_f_options, **race.query()}):
+            for res in r:
+                self.candidates[res['candidate_id']].add_schedule_f_result(res)
+        # TODO: ask for all election cycles for a given race
+
+        communication_costs_options = {
+            'election_full': True,
+            'candidate_id': [i for i in self.candidates.keys() if self.candidates[i].total_disbursements > 0.0]
+        }
+        for r in FECRequester('communication_costs/totals/by_candidate/',
+                              {**communication_costs_options, **race.query()}):
+            for res in r:
+                self.candidates[res['candidate_id']].add_communication_costs_result(res)
+
+        # TODO: DRY
+        electioneering_options = {
+            'election_full': True,
+            'candidate_id': [i for i in self.candidates.keys() if self.candidates[i].total_disbursements > 0.0]
+        }
+        for r in FECRequester('electioneering/totals/by_candidate/',
+                              {**electioneering_options, **race.query()}):
+            for res in r:
+                self.candidates[res['candidate_id']].add_electioneering_result(res)
+        
+        
+        # where can we maybe filter down candidates? total disbursements?
+        # schedule_f? But need to be smart about which candidates
+        # electioneering?
+        # communication cost?
+
+class CandidateRaceSummary():
+    def __init__(self, elections_result: Dict[str, any]):
+        self.candidate_id = elections_result['candidate_id']
+        self.name = elections_result['candidate_name']
+        self.total_disbursements = elections_result['total_disbursements']
+        self.schedule_e = defaultdict(int)
+        self.schedule_f = 0.0
+        self.communication_costs = defaultdict(int)
+        self.electioneering = 0.0
+
+    def add_schedule_e_result(self, schedule_e_result: Dict[str, any]):
+        if self.candidate_id != schedule_e_result['candidate_id']:
+            # handle this error?
+            return
+        self.schedule_e[schedule_e_result['support_oppose_indicator']] += schedule_e_result['total']
+
+    def add_schedule_f_result(self, schedule_f_result: Dict[str, any]):
+        if self.candidate_id != schedule_f_result['candidate_id']:
+            # handle this error?
+            return
+        self.schedule_f += schedule_f_result['expenditure_amount']
+
+    def add_communication_costs_result(self, communication_costs_result: Dict[str, any]):
+        if self.candidate_id != communication_costs_result['candidate_id']:
+            # handle this error?
+            return
+        self.communication_costs[communication_costs_result['support_oppose_indicator']] += communication_costs_result['total']
+
+    def add_electioneering_result(self, electioneering_result: Dict[str, any]):
+        if self.candidate_id != electioneering_result['candidate_id']:
+            # handle this error?
+            return
+        self.electioneering += electioneering_result['total']
+
+def fec_request(endpoint, query):
+    fixed_params = {
+        'api_key': os.environ.get('DATAGOV_API_KEY'), # to add default?
+        'per_page': 100
+    }
+    payload = {**fixed_params, **query}
+    base_uri = 'https://api.open.fec.gov/v1/'
+    r = requests.get(base_uri + endpoint, params=payload)
+    return r
+
+class FECRequester():
+    # TODO: lots of error handling
+    # TODO: handle different endpoints having different iteration gracefully
+    # TODO: may be able to multithread if know pagination upfront
+    def __init__(self, endpoint: str, query: Dict[str, any]) -> None:
+        self.uri = f"https://api.open.fec.gov/v1/{endpoint}"
+        fixed_params = {
+            'api_key': os.environ.get('DATAGOV_API_KEY'), # to add default?
+            'per_page': 100
+        }
+        self.payload = {**fixed_params, **query}
+        self.next_page = 1
+        self.pages = None
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.pages and self.next_page > self.pages:
+            raise StopIteration
+        else:
+            params = {**self.payload, 'page': self.next_page}
+            r = requests.get(self.uri, params=params)
+            self.next_page += 1
+            result = r.json()
+            self.pages = result['pagination']['pages']
+            # TODO: error handling
+            return result['results']
+
+if __name__ == '__main__':
+    # convert election into candidates?
+    # /elections/
+
+    # convert candidates into committees? or consolidate committees by candidates?
+
+    # committee types?
+    race_summary(PresidentialRace(2016))
+
+def main():
+    if len(sys.argv) < 3:
+        # Hillary for America as a default
+        committee_type = 'P'
+        committee_id = 'C00575795'
+    else:
+        committee_type = sys.argv[2]
+        committee_id = sys.argv[1]
+        
+    two_year_periods = {
+        'P': 2,
+        'H': 3,
+        'S': 3
+    }
+    cycle = 2016
+    office = 'P'
+
+    sort = 'contribution_receipt_amount'
+        
+    fec_api_query = {
+        'committee_id': committee_id, # to replace with regular function arg
+        'is_individual': True,
+        'sort': '-' + sort
+    }
+
+    total_fec_api_query = {
+        'committee_id': committee_id
+    }
+
+    last_indexes = ['last_' + sort,
+                    'last_index']
+
+    total_itemized_contributions = 0.0
+    
+    aggregate_contributions = {}
+
+    for two_year_offset in range(two_year_periods[office]):
+        two_year_transaction_period = cycle - 2 * two_year_offset
+        print('---Two Year Period: %d---' % two_year_transaction_period)
+
+        fec_api_query['two_year_transaction_period'] = two_year_transaction_period
+        total_fec_api_query['cycle'] = two_year_transaction_period
+        
+        for idx_tracker in last_indexes: fec_api_query.pop(idx_tracker, None)
+        
+        total_response = fec_request('totals/' + committee_type + '/',
+                                     total_fec_api_query)
+
+        if (total_response.status_code == requests.codes.ok and
+            'results' in total_response.json() and
+            len(total_response.json()['results']) == 1):
+
+            print(total_response.json())
+            
+            total_itemized_contributions += total_response.json()['results'][0]['individual_itemized_contributions']
+            
+        query_response = fec_request('schedules/schedule_a/',
+                                     fec_api_query)
+
+        print(query_response.json())
+
+        print('\n---%s queries remaining---\n' % query_response.headers['X-RateLimit-Remaining'])
+        
+        while not len(query_response.json()['results']) == 0:
+            results = query_response.json()['results']
+            for result in results:
+                aggregate_contributions[result['contributor_name']] = aggregate_contributions.get(result['contributor_name'], 0.0) + result['contribution_receipt_amount']
+                print('%s contributed %f. Aggregate: %f' % (result['contributor_name'],
+                                                            result['contribution_receipt_amount'],
+                                                            aggregate_contributions[result['contributor_name']]))
+            for idx_tracker in last_indexes:
+                fec_api_query[idx_tracker] = query_response.json()['pagination']['last_indexes'][idx_tracker]
+
+            query_response = fec_request('schedules/schedule_a/',
+                                         fec_api_query)
+
+            print('\n---%s queries remaining---\n' % query_response.headers['X-RateLimit-Remaining'])
+
+            
+    print('-----total aggregated contributions-----')
+    
+    for contributor_name, aggregate_contribution in sorted(aggregate_contributions.items(),
+                                                           key=itemgetter(1),
+                                                           reverse=True):
+        print('%s: %f' % (contributor_name, aggregate_contribution))
+    print('total check:\n%f\n%f' % (sum(aggregate_contributions.values()),
+                                    total_itemized_contributions))
