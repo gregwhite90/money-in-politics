@@ -7,7 +7,11 @@ import requests
 
 import tasks
 
-dash.register_page(__name__)
+dash.register_page(
+    __name__,
+    title='Election summary',
+    name='Election summary',
+)
 
 layout = html.Div(children=[
     dcc.Dropdown(['president'], 'president', id='office'),
