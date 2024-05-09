@@ -4,6 +4,10 @@ import os
 
 app = celery.Celery('stay-bought')
 
+redis_url = os.environ.get('REDIS_URL') # to add default?
+app.conf.update(broker_url=redis_url,
+                result_backend=redis_url)
+
 @app.task
 def fec_request(endpoint, query):
     fixed_params = {
@@ -25,8 +29,3 @@ def pp_cf_request(endpoint):
     base_uri = 'https://api.propublica.org/campaign-finance/v1/'
     r = requests.get(base_uri + endpoint + data_format, headers=headers)
     return r
-
-redis_url = os.environ.get('REDIS_URL') # to add default?
-
-app.conf.update(BROKER_URL=redis_url,
-                CELERY_RESULT_BACKEND=redis_url)
