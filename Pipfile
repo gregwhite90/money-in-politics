@@ -10,6 +10,10 @@ requests = "*"
 rq = "*"
 redis = "*"
 celery = "*"
+dash = "*"
+plotly = "*"
+dash-bootstrap-components = "*"
+pandas = "*"
 
 [dev-packages]
 
