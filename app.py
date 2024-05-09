@@ -1,7 +1,5 @@
-import tasks
-import requests
 import dash
-from dash import Dash, dcc, html, Input, Output, callback
+from dash import Dash, dcc, html
 
 app = Dash(__name__, use_pages=True)
 
