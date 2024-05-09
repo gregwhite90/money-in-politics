@@ -26,6 +26,14 @@ layout = html.Div(children=[
     )
 ])
 
+# TODO: clean up the user interface
+# TODO: get working for house and senate races too
+# TODO: expand the dates possible
+# TODO: change to adjusted disbursements for candidate committees
+# TODO: add independent expenditures
+# TODO: add party-coordinated expenditures
+# TODO: figure out how to sort
+# TODO: figure out how to be efficient with API calls. only 16-100 calls per hour
 @callback(
     Output('graph', 'figure'),
     Output('graph', 'style'),
